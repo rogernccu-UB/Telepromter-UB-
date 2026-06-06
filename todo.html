@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>代辦清單</title>
+<style>
+:root{
+  --bg:#0f0f13;--card:#1a1a22;--card2:#22222e;--border:#2a2a38;
+  --text:#f0f0f8;--sub:#8888aa;--accent:#6c63ff;--green:#22c55e;
+  --red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;
+  --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;overflow:hidden}
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;height:100%}
+#views{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px;display:none}
+.view.active{display:block}
+/* ── Top bar ── */
+.topbar{padding:calc(14px + var(--safe-t)) 16px 14px;display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.topbar h1{font-size:1.2rem;font-weight:700}
+.topbar .sub{font-size:.75rem;color:var(--sub);margin-top:2px}
+.icon-btn{width:36px;height:36px;border:none;border-radius:50%;background:var(--card2);color:var(--text);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+/* ── Bottom nav ── */
+#nav{display:flex;background:var(--card);border-top:1px solid var(--border);padding-bottom:var(--safe-b)}
+.nav-btn{flex:1;padding:10px 4px 8px;border:none;background:none;color:var(--sub);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.62rem;transition:color .2s}
+.nav-btn .icon{font-size:1.3rem}
+.nav-btn.active{color:var(--accent)}
+/* ── Cards ── */
+.card{background:var(--card);border-radius:14px;padding:16px;margin:12px 12px 0}
+.card-sm{background:var(--card2);border-radius:10px;padding:12px 14px;margin:8px 12px 0}
+/* ── Task item ── */
+.task-item{background:var(--card);border-radius:12px;padding:13px 14px;margin:8px 12px 0;display:flex;align-items:flex-start;gap:12px;cursor:pointer;border-left:3px solid transparent}
+.task-item.pri-high{border-left-color:var(--red)}
+.task-item.pri-mid{border-left-color:var(--yellow)}
+.task-item.pri-low{border-left-color:var(--green)}
+.task-item.done{opacity:.5}
+.task-check{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.8rem;transition:all .2s}
+.task-item.done .task-check{background:var(--green);border-color:var(--green)}
+.task-body{flex:1;min-width:0}
+.task-title{font-size:.95rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-item.done .task-title{text-decoration:line-through}
+.task-meta{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.tag{font-size:.65rem;padding:2px 7px;border-radius:20px;background:var(--card2);color:var(--sub)}
+.tag.cat{background:rgba(108,99,255,.2);color:var(--accent)}
+.tag.date-overdue{background:rgba(239,68,68,.2);color:var(--red)}
+.tag.date-today{background:rgba(245,158,11,.2);color:var(--yellow)}
+/* ── Progress ring ── */
+.ring-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ring-wrap svg{overflow:visible}
+.ring-label{font-size:1.6rem;font-weight:700}
+.ring-sub{font-size:.75rem;color:var(--sub)}
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 12px 0}
+.stat-card{background:var(--card);border-radius:12px;padding:14px;text-align:center}
+.stat-num{font-size:1.8rem;font-weight:700;color:var(--accent)}
+.stat-label{font-size:.7rem;color:var(--sub);margin-top:2px}
+/* ── Calendar ── */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 12px}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);padding:8px 12px 4px;text-align:center;font-size:.7rem;color:var(--sub)}
+.cal-day{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:.82rem;position:relative;cursor:pointer}
+.cal-day.today{background:var(--accent);color:#fff;font-weight:700}
+.cal-day.other-month{color:var(--border)}
+.cal-day.has-task::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--yellow)}
+.cal-day.today.has-task::after{background:#fff}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px}
+.cal-nav h2{font-size:1rem;font-weight:600}
+/* ── FAB ── */
+#fab{position:fixed;bottom:calc(72px + var(--safe-b));right:16px;width:52px;height:52px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 20px rgba(108,99,255,.5);z-index:50;display:flex;align-items:center;justify-content:center}
+/* ── Modal ── */
+#modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end}
+#modal-bg.open{display:flex}
+#modal{background:var(--card);border-radius:20px 20px 0 0;padding:20px 16px calc(20px + var(--safe-b));width:100%;max-height:90vh;overflow-y:auto}
+#modal h2{font-size:1.1rem;font-weight:700;margin-bottom:16px}
+.form-group{margin-bottom:14px}
+.form-group label{font-size:.75rem;color:var(--sub);display:block;margin-bottom:6px}
+.form-control{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:.95rem;outline:none;-webkit-appearance:none}
+.form-control:focus{border-color:var(--accent)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:flex;background:var(--card2);border-radius:10px;overflow:hidden}
+.seg button{flex:1;padding:8px 4px;border:none;background:none;color:var(--sub);font-size:.82rem;cursor:pointer;transition:all .2s}
+.seg button.active{background:var(--accent);color:#fff}
+.btn-row-modal{display:flex;gap:8px;margin-top:16px}
+.btn{flex:1;padding:12px;border:none;border-radius:10px;font-size:.9rem;font-weight:600;cursor:pointer}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-ghost{background:var(--card2);color:var(--sub)}
+.btn-danger{background:rgba(239,68,68,.15);color:var(--red)}
+/* ── Filter bar ── */
+.filter-bar{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.filter-bar::-webkit-scrollbar{display:none}
+.filter-chip{padding:5px 12px;border-radius:20px;background:var(--card2);color:var(--sub);border:none;font-size:.78rem;white-space:nowrap;cursor:pointer;flex-shrink:0}
+.filter-chip.active{background:var(--accent);color:#fff}
+/* ── Settings ── */
+.setting-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)}
+.setting-label{font-size:.9rem}
+.setting-sub{font-size:.72rem;color:var(--sub);margin-top:2px}
+.toggle{width:44px;height:26px;border-radius:13px;background:var(--border);border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+.toggle::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .2s}
+.toggle.on{background:var(--accent)}
+.toggle.on::after{transform:translateX(18px)}
+/* ── Toast ── */
+#toast{position:fixed;bottom:calc(80px + var(--safe-b) + 12px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--card2);color:var(--text);padding:10px 20px;border-radius:20px;font-size:.85rem;z-index:200;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ── Empty state ── */
+.empty{text-align:center;padding:48px 24px;color:var(--sub)}
+.empty .icon{font-size:3rem;margin-bottom:12px}
+/* ── Section title ── */
+.section-title{font-size:.75rem;color:var(--sub);padding:14px 16px 4px;text-transform:uppercase;letter-spacing:.5px}
+/* ── Gcal badge ── */
+.gcal-badge{display:inline-flex;align-items:center;gap:4px;font-size:.65rem;padding:2px 7px;border-radius:20px;background:rgba(59,130,246,.2);color:var(--blue)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="views">
+    <!-- TODAY -->
+    <div class="view active" id="v-today">
+      <div class="topbar">
+        <div><div class="sub" id="today-date"></div><h1>今日任務</h1></div>
+        <button class="icon-btn" onclick="syncGcal()" title="同步 Google Calendar">📅</button>
+      </div>
+      <div id="today-ring-wrap"></div>
+      <div id="today-overdue"></div>
+      <div id="today-tasks"></div>
+    </div>
+    <!-- TASKS -->
+    <div class="view" id="v-tasks">
+      <div class="topbar"><h1>所有任務</h1></div>
+      <div class="filter-bar" id="filter-bar"></div>
+      <div id="task-list"></div>
+    </div>
+    <!-- CALENDAR -->
+    <div class="view" id="v-cal">
+      <div class="topbar"><h1>月曆</h1></div>
+      <div class="cal-nav">
+        <button class="icon-btn" onclick="calPrev()">‹</button>
+        <h2 id="cal-title"></h2>
+        <button class="icon-btn" onclick="calNext()">›</button>
+      </div>
+      <div class="cal-head"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div id="cal-day-tasks"></div>
+    </div>
+    <!-- STATS -->
+    <div class="view" id="v-stats">
+      <div class="topbar"><h1>統計</h1></div>
+      <div id="stats-content"></div>
+    </div>
+    <!-- SETTINGS -->
+    <div class="view" id="v-settings">
+      <div class="topbar"><h1>設定</h1></div>
+      <div id="settings-content"></div>
+    </div>
+  </div>
+  <nav id="nav">
+    <button class="nav-btn active" onclick="switchTab('today',this)"><span class="icon">☀️</span>今日</button>
+    <button class="nav-btn" onclick="switchTab('tasks',this)"><span class="icon">📋</span>任務</button>
+    <button class="nav-btn" onclick="switchTab('cal',this)"><span class="icon">📅</span>月曆</button>
+    <button class="nav-btn" onclick="switchTab('stats',this)"><span class="icon">📊</span>統計</button>
+    <button class="nav-btn" onclick="switchTab('settings',this)"><span class="icon">⚙️</span>設定</button>
+  </nav>
+</div>
+<button id="fab" onclick="openModal()">＋</button>
+<div id="modal-bg" onclick="closeModalOnBg(event)">
+  <div id="modal">
+    <h2 id="modal-title">新增任務</h2>
+    <div class="form-group">
+      <label>任務名稱</label>
+      <input class="form-control" id="f-title" placeholder="輸入任務..." maxlength="80"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>截止日期</label>
+        <input class="form-control" id="f-date" type="date"/>
+      </div>
+      <div class="form-group">
+        <label>截止時間</label>
+        <input class="form-control" id="f-time" type="time"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>優先順序</label>
+      <div class="seg" id="seg-pri">
+        <button class="active" data-val="high">🔴 高</button>
+        <button data-val="mid">🟡 中</button>
+        <button data-val="low">🟢 低</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>分類</label>
+      <select class="form-control" id="f-cat"></select>
+    </div>
+    <div class="form-group">
+      <label>備註</label>
+      <input class="form-control" id="f-note" placeholder="選填備註..."/>
+    </div>
+    <div class="btn-row-modal">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-danger" id="btn-delete" onclick="deleteTask()" style="display:none">刪除</button>
+      <button class="btn btn-primary" onclick="saveTask()">儲存</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+// ── State ───────────────────────────────────────────────
+const STORAGE_KEY = 'deeprad_todo_v2';
+const SETTINGS_KEY = 'deeprad_todo_cfg';
+
+let state = {
+  tasks: [],
+  calYear: new Date().getFullYear(),
+  calMonth: new Date().getMonth(),
+  calSelected: null,
+  filter: 'all',
+  editId: null,
+  gcalToken: null,
+};
+
+let cfg = {
+  gcalClientId: '',
+  gcalEnabled: false,
+  categories: ['工作','個人','神瑞 AI','其他'],
+};
+
+// ── Storage ─────────────────────────────────────────────
+function saveAll(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state.tasks));}
+function loadAll(){
+  try{state.tasks=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');}catch(e){state.tasks=[];}
+  try{Object.assign(cfg,JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}'));}catch(e){}
+}
+function saveCfg(){localStorage.setItem(SETTINGS_KEY,JSON.stringify(cfg));}
+
+// ── Helpers ──────────────────────────────────────────────
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
+function today(){return new Date().toISOString().slice(0,10);}
+function fmt(dateStr){
+  if(!dateStr)return'';
+  const d=new Date(dateStr+'T00:00:00');
+  const t=today();
+  if(dateStr<t)return'⚠️ 已逾期';
+  if(dateStr===t)return'📌 今天';
+  const diff=Math.round((d-new Date(t+'T00:00:00'))/(86400000));
+  if(diff===1)return'明天';
+  if(diff<=7)return diff+'天後';
+  return d.toLocaleDateString('zh-TW',{month:'short',day:'numeric'});
+}
+function isOverdue(t){return t.dueDate&&t.dueDate<today()&&!t.done;}
+function isToday(t){return t.dueDate===today();}
+function toast(msg,dur=2200){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),dur);
+}
+
+// ── Tab switching ────────────────────────────────────────
+function switchTab(name,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('v-'+name).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(name==='today')renderToday();
+  if(name==='tasks')renderTasks();
+  if(name==='cal')renderCal();
+  if(name==='stats')renderStats();
+  if(name==='settings')renderSettings();
+}
+
+// ── Render Today ─────────────────────────────────────────
+function renderToday(){
+  const t=today();
+  const d=new Date();
+  document.getElementById('today-date').textContent=d.toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  const todayTasks=state.tasks.filter(t=>isToday(t));
+  const done=todayTasks.filter(t=>t.done).length;
+  const total=todayTasks.length;
+  const pct=total?Math.round(done/total*100):0;
+  const overdue=state.tasks.filter(t=>isOverdue(t));
+  // Ring
+  const r=42;const circ=2*Math.PI*r;
+  document.getElementById('today-ring-wrap').innerHTML=`
+  <div class="card" style="display:flex;align-items:center;gap:20px">
+    <div class="ring-wrap">
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <circle cx="55" cy="55" r="${r}" fill="none" stroke="var(--border)" stroke-width="8"/>
+        <circle cx="55" cy="55" r="${r}" fill="none" stroke="var(--accent)" stroke-width="8"
+          stroke-dasharray="${circ}" stroke-dashoffset="${circ*(1-pct/100)}"
+          stroke-linecap="round" transform="rotate(-90 55 55)" style="transition:stroke-dashoffset .6s"/>
+        <text x="55" y="60" text-anchor="middle" fill="var(--text)" font-size="22" font-weight="700">${pct}%</text>
+      </svg>
+    </div>
+    <div>
+      <div style="font-size:1.4rem;font-weight:700">${done}/${total}</div>
+      <div style="font-size:.8rem;color:var(--sub);margin-top:4px">今日完成</div>
+      ${overdue.length?`<div style="font-size:.78rem;color:var(--red);margin-top:8px">⚠️ ${overdue.length} 項逾期</div>`:''}
+    </div>
+  </div>`;
+  // Overdue section
+  const ov=document.getElementById('today-overdue');
+  if(overdue.length){
+    ov.innerHTML=`<div class="section-title">⚠️ 逾期任務</div>`+overdue.map(t=>taskHTML(t)).join('');
+  }else ov.innerHTML='';
+  // Today tasks
+  const el=document.getElementById('today-tasks');
+  if(!total&&!overdue.length){
+    el.innerHTML=`<div class="empty"><div class="icon">🎉</div><div>今天沒有待辦任務！<br>點 ＋ 新增一個</div></div>`;
+    return;
+  }
+  el.innerHTML=`<div class="section-title">今日任務</div>`+todayTasks.map(t=>taskHTML(t)).join('');
+}
+
+// ── Render Tasks ─────────────────────────────────────────
+function renderTasks(){
+  const cats=['all',...cfg.categories];
+  document.getElementById('filter-bar').innerHTML=cats.map(c=>
+    `<button class="filter-chip${state.filter===c?' active':''}" onclick="setFilter('${c}')">${c==='all'?'全部':c}</button>`
+  ).join('')+`<button class="filter-chip${state.filter==='done'?' active':''}" onclick="setFilter('done')">✅ 已完成</button>`;
+
+  let tasks=state.filter==='all'?state.tasks:
+    state.filter==='done'?state.tasks.filter(t=>t.done):
+    state.tasks.filter(t=>t.category===state.filter);
+  tasks=[...tasks].sort((a,b)=>{
+    if(a.done!==b.done)return a.done?1:-1;
+    const po={high:0,mid:1,low:2};
+    if(a.priority!==b.priority)return(po[a.priority]||1)-(po[b.priority]||1);
+    return(a.dueDate||'z').localeCompare(b.dueDate||'z');
+  });
+  const el=document.getElementById('task-list');
+  if(!tasks.length){el.innerHTML=`<div class="empty"><div class="icon">📭</div><div>沒有任務</div></div>`;return;}
+  el.innerHTML=tasks.map(t=>taskHTML(t)).join('');
+}
+function setFilter(f){state.filter=f;renderTasks();}
+
+// ── Task HTML ────────────────────────────────────────────
+function taskHTML(t){
+  const dClass=t.dueDate<today()&&!t.done?'date-overdue':t.dueDate===today()?'date-today':'';
+  return`<div class="task-item pri-${t.priority}${t.done?' done':''}" onclick="openModal('${t.id}')">
+    <div class="task-check" onclick="toggleDone(event,'${t.id}')">${t.done?'✓':''}</div>
+    <div class="task-body">
+      <div class="task-title">${esc(t.title)}</div>
+      <div class="task-meta">
+        ${t.category?`<span class="tag cat">${esc(t.category)}</span>`:''}
+        ${t.dueDate?`<span class="tag ${dClass}">${fmt(t.dueDate)}</span>`:''}
+        ${t.gcalId?`<span class="gcal-badge">📅 GCal</span>`:''}
+        ${t.note?`<span class="tag">${esc(t.note).slice(0,20)}</span>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Toggle done ──────────────────────────────────────────
+function toggleDone(e,id){
+  e.stopPropagation();
+  const t=state.tasks.find(t=>t.id===id);
+  if(!t)return;
+  t.done=!t.done;t.doneAt=t.done?new Date().toISOString():null;
+  saveAll();renderCurrent();toast(t.done?'✅ 已完成！':'↩️ 已取消完成');
+}
+
+// ── Calendar ─────────────────────────────────────────────
+function calPrev(){state.calMonth--;if(state.calMonth<0){state.calMonth=11;state.calYear--;}renderCal();}
+function calNext(){state.calMonth++;if(state.calMonth>11){state.calMonth=0;state.calYear++;}renderCal();}
+function renderCal(){
+  const {calYear:y,calMonth:m}=state;
+  document.getElementById('cal-title').textContent=`${y} 年 ${m+1} 月`;
+  const first=new Date(y,m,1).getDay();
+  const days=new Date(y,m+1,0).getDate();
+  const t=today();
+  const taskDays=new Set(state.tasks.filter(t=>t.dueDate&&t.dueDate.startsWith(`${y}-${String(m+1).padStart(2,'0')}`)).map(t=>parseInt(t.dueDate.slice(8))));
+  let html='';
+  for(let i=0;i<first;i++) html+=`<div class="cal-day other-month"></div>`;
+  for(let d=1;d<=days;d++){
+    const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isT=ds===t,hasTk=taskDays.has(d),isSel=ds===state.calSelected;
+    html+=`<div class="cal-day${isT?' today':''}${hasTk?' has-task':''}${isSel&&!isT?' selected':''}" onclick="calSelectDay('${ds}')" style="${isSel&&!isT?'background:var(--card2)':''}">${d}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML=html;
+  if(state.calSelected)renderCalDayTasks();
+  else document.getElementById('cal-day-tasks').innerHTML='';
+}
+function calSelectDay(ds){
+  state.calSelected=state.calSelected===ds?null:ds;renderCal();
+}
+function renderCalDayTasks(){
+  const tasks=state.tasks.filter(t=>t.dueDate===state.calSelected);
+  const d=new Date(state.calSelected+'T00:00:00');
+  document.getElementById('cal-day-tasks').innerHTML=
+    `<div class="section-title">${d.toLocaleDateString('zh-TW',{month:'long',day:'numeric'})} 的任務</div>`+
+    (tasks.length?tasks.map(t=>taskHTML(t)).join(''):`<div class="empty" style="padding:20px"><div>當天無任務</div></div>`);
+}
+
+// ── Stats ────────────────────────────────────────────────
+function renderStats(){
+  const all=state.tasks;
+  const done=all.filter(t=>t.done);
+  const overdue=all.filter(t=>isOverdue(t));
+  const today7=[...Array(7)].map((_,i)=>{
+    const d=new Date();d.setDate(d.getDate()-6+i);
+    const ds=d.toISOString().slice(0,10);
+    return{label:['日','一','二','三','四','五','六'][d.getDay()],done:all.filter(t=>t.doneAt&&t.doneAt.slice(0,10)===ds).length};
+  });
+  const maxBar=Math.max(...today7.map(d=>d.done),1);
+  const catStats=cfg.categories.map(c=>({name:c,cnt:all.filter(t=>t.category===c&&!t.done).length})).filter(c=>c.cnt>0);
+  document.getElementById('stats-content').innerHTML=`
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-num">${all.length}</div><div class="stat-label">總任務數</div></div>
+    <div class="stat-card"><div class="stat-num">${done.length}</div><div class="stat-label">已完成</div></div>
+    <div class="stat-card"><div class="stat-num">${all.length-done.length}</div><div class="stat-label">待辦中</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--red)">${overdue.length}</div><div class="stat-label">已逾期</div></div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div style="font-size:.8rem;color:var(--sub);margin-bottom:12px">近 7 天完成數</div>
+    <div style="display:flex;align-items:flex-end;gap:6px;height:80px">
+      ${today7.map(d=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="flex:1;display:flex;align-items:flex-end;width:100%">
+          <div style="width:100%;background:var(--accent);border-radius:4px 4px 0 0;height:${d.done?Math.round(d.done/maxBar*60)+4:2}px;opacity:${d.done?.9:.2}"></div>
+        </div>
+        <div style="font-size:.65rem;color:var(--sub)">${d.label}</div>
+        <div style="font-size:.7rem;font-weight:600">${d.done||''}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+  ${catStats.length?`<div class="card" style="margin-top:10px">
+    <div style="font-size:.8rem;color:var(--sub);margin-bottom:10px">分類待辦</div>
+    ${catStats.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div style="font-size:.85rem;min-width:64px">${esc(c.name)}</div>
+      <div style="flex:1;background:var(--border);border-radius:4px;height:8px">
+        <div style="background:var(--accent);border-radius:4px;height:100%;width:${Math.round(c.cnt/all.length*100)}%"></div>
+      </div>
+      <div style="font-size:.78rem;color:var(--sub);min-width:20px">${c.cnt}</div>
+    </div>`).join('')}
+  </div>`:''}`;
+}
+
+// ── Settings ─────────────────────────────────────────────
+function renderSettings(){
+  document.getElementById('settings-content').innerHTML=`
+  <div style="padding:14px 16px;background:var(--card);margin:12px;border-radius:14px">
+    <div style="font-size:.8rem;color:var(--sub);margin-bottom:10px">📅 Google Calendar 同步設定</div>
+    <div class="form-group"><label>Google OAuth Client ID</label>
+      <input class="form-control" id="s-gcal-id" value="${esc(cfg.gcalClientId)}" placeholder="xxxx.apps.googleusercontent.com" style="font-size:.78rem"/>
+    </div>
+    <div style="font-size:.72rem;color:var(--sub);margin-bottom:10px;line-height:1.6">
+      前往 <b>console.cloud.google.com</b> → 建立專案 → 啟用 Calendar API → 建立 OAuth 2.0 用戶端 ID（類型選「Web 應用程式」）→ 已授權的 JavaScript 來源加入你的網址 → 複製 Client ID 貼上
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="saveCfgUI()">儲存設定</button>
+  </div>
+  <div class="section-title">任務分類</div>
+  <div class="card">
+    <div id="cat-list">${cfg.categories.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input class="form-control" value="${esc(c)}" id="cat-${i}" style="flex:1"/>
+      <button class="icon-btn" onclick="removeCat(${i})" style="flex-shrink:0">✕</button>
+    </div>`).join('')}</div>
+    <button class="btn btn-ghost" style="width:100%;margin-top:8px" onclick="addCat()">＋ 新增分類</button>
+  </div>
+  <div class="section-title">資料管理</div>
+  <div class="card">
+    <button class="btn btn-ghost" style="width:100%;margin-bottom:8px" onclick="exportData()">📤 匯出資料</button>
+    <button class="btn btn-danger" style="width:100%" onclick="clearDone()">🗑️ 清除已完成任務</button>
+  </div>
+  <div style="height:20px"></div>`;
+}
+function saveCfgUI(){
+  cfg.gcalClientId=document.getElementById('s-gcal-id').value.trim();
+  cfg.categories=Array.from(document.querySelectorAll('[id^="cat-"]')).map(el=>el.value.trim()).filter(Boolean);
+  saveCfg();renderSettings();toast('✅ 設定已儲存');
+}
+function addCat(){cfg.categories.push('新分類');renderSettings();}
+function removeCat(i){cfg.categories.splice(i,1);renderSettings();}
+function exportData(){
+  const blob=new Blob([JSON.stringify({tasks:state.tasks,exported:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='todo-export.json';a.click();
+}
+function clearDone(){
+  if(!confirm('確定要清除所有已完成任務？'))return;
+  state.tasks=state.tasks.filter(t=>!t.done);saveAll();toast('🗑️ 已清除完成任務');renderSettings();
+}
+
+// ── Modal ────────────────────────────────────────────────
+function openModal(id){
+  state.editId=id||null;
+  const t=id?state.tasks.find(t=>t.id===id):null;
+  document.getElementById('modal-title').textContent=t?'編輯任務':'新增任務';
+  document.getElementById('f-title').value=t?t.title:'';
+  document.getElementById('f-date').value=t?t.dueDate||'':'';
+  document.getElementById('f-time').value=t?t.dueTime||'':'';
+  document.getElementById('f-note').value=t?t.note||'':'';
+  const catEl=document.getElementById('f-cat');
+  catEl.innerHTML=`<option value="">無分類</option>`+cfg.categories.map(c=>`<option value="${esc(c)}"${t&&t.category===c?' selected':''}>${esc(c)}</option>`).join('');
+  document.querySelectorAll('#seg-pri button').forEach(b=>{b.classList.toggle('active',b.dataset.val===(t?t.priority:'high'));});
+  document.getElementById('btn-delete').style.display=t?'block':'none';
+  document.getElementById('modal-bg').classList.add('open');
+  setTimeout(()=>document.getElementById('f-title').focus(),100);
+}
+function closeModal(){document.getElementById('modal-bg').classList.remove('open');}
+function closeModalOnBg(e){if(e.target===document.getElementById('modal-bg'))closeModal();}
+document.querySelectorAll('#seg-pri button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#seg-pri button').forEach(x=>x.classList.remove('active'));b.classList.add('active');};
+});
+function saveTask(){
+  const title=document.getElementById('f-title').value.trim();
+  if(!title){toast('⚠️ 請輸入任務名稱');return;}
+  const pri=document.querySelector('#seg-pri button.active').dataset.val;
+  const t=state.editId?state.tasks.find(t=>t.id===state.editId):{id:uid(),done:false,createdAt:new Date().toISOString()};
+  t.title=title;t.priority=pri;
+  t.dueDate=document.getElementById('f-date').value||'';
+  t.dueTime=document.getElementById('f-time').value||'';
+  t.category=document.getElementById('f-cat').value||'';
+  t.note=document.getElementById('f-note').value.trim();
+  if(!state.editId)state.tasks.unshift(t);
+  saveAll();closeModal();renderCurrent();
+  if(cfg.gcalEnabled&&cfg.gcalClientId&&t.dueDate&&state.gcalToken)pushToGcal(t);
+  toast(state.editId?'✏️ 已更新':'✅ 任務已新增');
+}
+function deleteTask(){
+  if(!state.editId)return;
+  if(!confirm('確定要刪除這個任務？'))return;
+  state.tasks=state.tasks.filter(t=>t.id!==state.editId);
+  saveAll();closeModal();renderCurrent();toast('🗑️ 已刪除');
+}
+
+// ── Google Calendar ──────────────────────────────────────
+let tokenClient=null;
+function initGcal(){
+  if(!cfg.gcalClientId)return;
+  tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:cfg.gcalClientId,
+    scope:'https://www.googleapis.com/auth/calendar.events',
+    callback:resp=>{if(!resp.error){state.gcalToken=resp.access_token;toast('✅ Google Calendar 已連線');}}
+  });
+}
+function syncGcal(){
+  if(!cfg.gcalClientId){toast('⚠️ 請先在設定中填入 Google Client ID');switchTab('settings',document.querySelectorAll('.nav-btn')[4]);return;}
+  if(!tokenClient){initGcal();}
+  tokenClient.requestAccessToken();
+}
+async function pushToGcal(task){
+  if(!state.gcalToken||!task.dueDate)return;
+  const start=task.dueTime?`${task.dueDate}T${task.dueTime}:00`:`${task.dueDate}`;
+  const body={summary:task.title,description:task.note||'',colorId:task.priority==='high'?'11':task.priority==='mid'?'5':'2'};
+  if(task.dueTime){body.start={dateTime:start,timeZone:'Asia/Taipei'};body.end={dateTime:start,timeZone:'Asia/Taipei'};}
+  else{body.start={date:task.dueDate};body.end={date:task.dueDate};}
+  try{
+    const method=task.gcalId?'PUT':'POST';
+    const url=`https://www.googleapis.com/calendar/v3/calendars/primary/events${task.gcalId?'/'+task.gcalId:''}`;
+    const r=await fetch(url,{method,headers:{'Authorization':'Bearer '+state.gcalToken,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.ok){const ev=await r.json();task.gcalId=ev.id;saveAll();toast('📅 已同步到 Google Calendar');}
+  }catch(e){console.error(e);}
+}
+
+// ── Current view render ──────────────────────────────────
+function renderCurrent(){
+  const active=document.querySelector('.view.active');
+  if(!active)return;
+  const id=active.id.replace('v-','');
+  if(id==='today')renderToday();
+  else if(id==='tasks')renderTasks();
+  else if(id==='cal')renderCal();
+  else if(id==='stats')renderStats();
+}
+
+// ── Init ─────────────────────────────────────────────────
+loadAll();renderToday();
+
+// Load Google GSI script lazily
+const gsi=document.createElement('script');
+gsi.src='https://accounts.google.com/gsi/client';
+gsi.onload=()=>{if(cfg.gcalClientId)initGcal();};
+document.head.appendChild(gsi);
+</script>
+</body>
+</html>
+      
