@@ -1,1 +1,289 @@
-# Telepromter-UB-
+[teleprompter.html](https://github.com/user-attachments/files/28666153/teleprompter.html)
+# Telepromter-UB-<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>提詞機</title>
+  <style>
+    :root {
+      --bg: #000;
+      --accent: #f0c040;
+      --ctrl-bg: rgba(18,18,18,0.97);
+      --radius: 12px;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-t: env(safe-area-inset-top, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      background: var(--bg); color: #fff;
+      font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      height: 100%; overflow: hidden; position: fixed; width: 100%;
+    }
+    #editor-view {
+      display: flex; flex-direction: column; height: 100%;
+      padding: 16px; padding-top: calc(16px + var(--safe-t));
+      padding-bottom: calc(16px + var(--safe-b)); gap: 12px;
+    }
+    #editor-view h1 { font-size: 1.15rem; color: var(--accent); text-align: center; letter-spacing: 2px; flex-shrink: 0; }
+    #script-input {
+      flex: 1; background: #111; color: #fff; border: 1px solid #333;
+      border-radius: var(--radius); padding: 14px; font-size: 1rem;
+      line-height: 1.7; resize: none; outline: none; width: 100%;
+      -webkit-appearance: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    #start-btn {
+      background: var(--accent); color: #000; border: none;
+      border-radius: var(--radius); padding: 16px; font-size: 1.1rem;
+      font-weight: 700; cursor: pointer; width: 100%; flex-shrink: 0; -webkit-appearance: none;
+    }
+    #prompter-view { display: none; flex-direction: column; height: 100%; position: relative; }
+    #scroll-container {
+      flex: 1; overflow-y: scroll; -webkit-overflow-scrolling: touch;
+      position: relative; overscroll-behavior: contain;
+    }
+    #scroll-content {
+      padding: 50px 24px 60vh; line-height: 1.9; font-size: 2.2rem;
+      font-weight: 600; white-space: pre-wrap; word-break: break-word;
+      -webkit-transform: scaleX(1); transform: scaleX(1);
+    }
+    #scroll-content.mirror { -webkit-transform: scaleX(-1); transform: scaleX(-1); }
+    #scroll-container::before, #scroll-container::after {
+      content: ''; position: fixed; left: 0; right: 0; height: 90px; z-index: 10; pointer-events: none;
+    }
+    #scroll-container::before { top: 0; background: linear-gradient(to bottom, #000 20%, transparent 100%); }
+    #scroll-container::after  { bottom: 0; background: linear-gradient(to top, #000 30%, transparent 100%); }
+    #reading-line {
+      position: fixed; left: 0; right: 0; top: 40%; height: 3px;
+      background: var(--accent); opacity: 0.55; z-index: 11; pointer-events: none;
+    }
+    #tap-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 20; background: transparent; }
+    #controls {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--ctrl-bg);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      padding: 10px 16px; padding-bottom: calc(12px + var(--safe-b));
+      display: flex; flex-direction: column; gap: 10px; z-index: 100;
+      border-top: 1px solid #2a2a2a;
+      -webkit-transform: translateY(0); transform: translateY(0);
+      -webkit-transition: -webkit-transform 0.3s ease; transition: transform 0.3s ease;
+    }
+    #controls.hidden { -webkit-transform: translateY(calc(100% - 46px)); transform: translateY(calc(100% - 46px)); }
+    #ctrl-toggle { width: 44px; height: 5px; background: #555; border-radius: 3px; margin: 0 auto 2px; cursor: pointer; }
+    .ctrl-row { display: flex; align-items: center; gap: 10px; }
+    .ctrl-label { font-size: 0.75rem; color: #aaa; min-width: 44px; flex-shrink: 0; }
+    .ctrl-row input[type=range] {
+      flex: 1; height: 6px; cursor: pointer; -webkit-appearance: none;
+      background: #333; border-radius: 3px; outline: none;
+    }
+    .ctrl-row input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 24px; height: 24px;
+      border-radius: 50%; background: var(--accent); cursor: pointer;
+    }
+    .ctrl-val { font-size: 0.8rem; color: var(--accent); min-width: 28px; text-align: right; flex-shrink: 0; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; padding: 11px 4px; border: none; border-radius: 8px;
+      font-size: 0.82rem; font-weight: 600; cursor: pointer; -webkit-appearance: none;
+    }
+    #play-btn   { background: var(--accent); color: #000; }
+    #reset-btn  { background: #262626; color: #fff; }
+    #mirror-btn { background: #262626; color: #fff; }
+    #edit-btn   { background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
+    .btn.active { background: #cc0044; color: #fff; }
+  </style>
+</head>
+<body>
+<div id="editor-view">
+  <h1>📋 提詞機</h1>
+  <textarea id="script-input" placeholder="在此貼上您的講稿內容…&#10;&#10;每段落間建議空一行，方便閱讀。"></textarea>
+  <button id="start-btn">▶ 開始提詞</button>
+</div>
+<div id="prompter-view">
+  <div id="reading-line"></div>
+  <div id="scroll-container">
+    <div id="scroll-content"></div>
+  </div>
+  <div id="tap-overlay"></div>
+  <div id="controls">
+    <div id="ctrl-toggle"></div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">速度</span>
+      <input type="range" id="speed-slider" min="1" max="20" value="5" />
+      <span class="ctrl-val" id="speed-val">5</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">字體</span>
+      <input type="range" id="font-slider" min="16" max="72" value="36" />
+      <span class="ctrl-val" id="font-val">36</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="play-btn">⏸ 暫停</button>
+      <button class="btn" id="reset-btn">⏮ 重置</button>
+      <button class="btn" id="mirror-btn">🔁 鏡像</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="edit-btn">✏️ 編輯稿件</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+'use strict';
+var editorView=document.getElementById('editor-view');
+var prompterView=document.getElementById('prompter-view');
+var scriptInput=document.getElementById('script-input');
+var startBtn=document.getElementById('start-btn');
+var scrollEl=document.getElementById('scroll-container');
+var scrollContent=document.getElementById('scroll-content');
+var tapOverlay=document.getElementById('tap-overlay');
+var playBtn=document.getElementById('play-btn');
+var resetBtn=document.getElementById('reset-btn');
+var mirrorBtn=document.getElementById('mirror-btn');
+var editBtn=document.getElementById('edit-btn');
+var speedSlider=document.getElementById('speed-slider');
+var fontSlider=document.getElementById('font-slider');
+var speedVal=document.getElementById('speed-val');
+var fontVal=document.getElementById('font-val');
+var ctrlToggle=document.getElementById('ctrl-toggle');
+var controls=document.getElementById('controls');
+
+var isPlaying=false, isMirror=false, ctrlHidden=false;
+var rafId=null, lastTime=null;
+
+startBtn.addEventListener('click',function(){
+  var text=scriptInput.value.trim();
+  if(!text) return;
+  scrollContent.textContent=text;
+  editorView.style.display='none';
+  prompterView.style.display='flex';
+  scrollEl.scrollTop=0;
+  isPlaying=true;
+  updatePlayBtn();
+  scheduleScroll();
+  tryFullscreen();
+  keepAwake();
+});
+
+function scheduleScroll(){
+  if(rafId) cancelAnimationFrame(rafId);
+  lastTime=null;
+  rafId=requestAnimationFrame(scrollLoop);
+}
+
+function scrollLoop(ts){
+  if(!isPlaying){rafId=null;return;}
+  if(lastTime===null) lastTime=ts;
+  var dt=ts-lastTime; lastTime=ts;
+  var speed=parseFloat(speedSlider.value);
+  var inc=(speed*dt)/30;
+  var maxScroll=scrollEl.scrollHeight-scrollEl.clientHeight;
+  var next=scrollEl.scrollTop+inc;
+  if(next>=maxScroll){
+    scrollEl.scrollTop=maxScroll;
+    isPlaying=false; updatePlayBtn(); rafId=null; return;
+  }
+  scrollEl.scrollTop=next;
+  rafId=requestAnimationFrame(scrollLoop);
+}
+
+function togglePlay(){
+  isPlaying=!isPlaying; updatePlayBtn();
+  if(isPlaying){lastTime=null; scheduleScroll();}
+}
+
+playBtn.addEventListener('click',togglePlay);
+
+function updatePlayBtn(){
+  playBtn.textContent=isPlaying?'⏸ 暫停':'▶ 繼續';
+  playBtn.classList.toggle('active',!isPlaying);
+}
+
+resetBtn.addEventListener('click',function(){
+  scrollEl.scrollTop=0;
+  if(!isPlaying){isPlaying=true; updatePlayBtn(); lastTime=null; scheduleScroll();}
+});
+
+mirrorBtn.addEventListener('click',function(){
+  isMirror=!isMirror;
+  scrollContent.classList.toggle('mirror',isMirror);
+  mirrorBtn.classList.toggle('active',isMirror);
+});
+
+editBtn.addEventListener('click',function(){
+  if(rafId){cancelAnimationFrame(rafId); rafId=null;}
+  isPlaying=false;
+  prompterView.style.display='none';
+  editorView.style.display='flex';
+  tryExitFullscreen();
+});
+
+speedSlider.addEventListener('input',function(){speedVal.textContent=speedSlider.value;});
+fontSlider.addEventListener('input',function(){
+  fontVal.textContent=fontSlider.value;
+  scrollContent.style.fontSize=fontSlider.value+'px';
+});
+
+ctrlToggle.addEventListener('click',function(){
+  ctrlHidden=!ctrlHidden;
+  controls.classList.toggle('hidden',ctrlHidden);
+});
+
+/* Tap overlay: quick tap = play/pause; drag = pass through to scroll */
+var tapStartY=0, tapMoved=false;
+tapOverlay.addEventListener('touchstart',function(e){
+  tapStartY=e.touches[0].clientY; tapMoved=false;
+},{passive:true});
+tapOverlay.addEventListener('touchmove',function(e){
+  if(Math.abs(e.touches[0].clientY-tapStartY)>8){
+    tapMoved=true;
+    tapOverlay.style.pointerEvents='none';
+  }
+},{passive:true});
+tapOverlay.addEventListener('touchend',function(){
+  tapOverlay.style.pointerEvents='';
+  if(!tapMoved) togglePlay();
+  tapMoved=false;
+},{passive:true});
+
+/* Keyboard shortcuts */
+document.addEventListener('keydown',function(e){
+  if(prompterView.style.display==='none') return;
+  if(e.code==='Space'){e.preventDefault(); togglePlay();}
+  if(e.code==='ArrowUp')   scrollEl.scrollTop-=80;
+  if(e.code==='ArrowDown') scrollEl.scrollTop+=80;
+  if(e.code==='KeyM') mirrorBtn.click();
+  if(e.code==='KeyR') resetBtn.click();
+  if(e.key==='+'||e.key==='='){fontSlider.value=Math.min(72,+fontSlider.value+2); fontSlider.dispatchEvent(new Event('input'));}
+  if(e.key==='-'){fontSlider.value=Math.max(16,+fontSlider.value-2); fontSlider.dispatchEvent(new Event('input'));}
+});
+
+function tryFullscreen(){
+  try{
+    var el=document.documentElement;
+    if(el.requestFullscreen) el.requestFullscreen();
+    else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  }catch(e){}
+}
+function tryExitFullscreen(){
+  try{
+    if(document.exitFullscreen) document.exitFullscreen();
+    else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }catch(e){}
+}
+
+var wakeLock=null;
+function keepAwake(){
+  if('wakeLock' in navigator){
+    navigator.wakeLock.request('screen').then(function(wl){wakeLock=wl;}).catch(function(){});
+  }
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'&&isPlaying) keepAwake();
+});
+})();
+</script>
+</body>
+</html>
